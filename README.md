@@ -1,7 +1,7 @@
-![Translator window](WowChatTranslator.png)
-﻿
- WoW Chat Translator (Emberveil)
+WoW Chat Translator (Emberveil)
 ===============================
+
+![Translator window](WowChatTranslator.png)
 
 Translates Chinese (also Japanese and Korean) chat lines from the game into
 English (or Hungarian) in a small always-on-top window next to the game.
