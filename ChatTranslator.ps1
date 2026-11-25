@@ -2,7 +2,8 @@
 # Watches Logs\WoWChatLog.txt (turn logging on in game with /chatlog) and shows
 # every new Chinese chat line translated (English or Hungarian) in a small
 # always-on-top window. Replies typed in the window are translated to Chinese
-# and put on the clipboard. Text is sent to Google Translate's public web
+# and put on the clipboard. With "Chinese" chosen it works the other way:
+# English lines are shown in Chinese and replies are translated to English. Text is sent to Google Translate's public web
 # endpoint, so it needs internet; nothing is sent anywhere else.
 
 Add-Type -AssemblyName System.Windows.Forms
@@ -28,7 +29,8 @@ $Texts = @{
         Title = "WoW Chat Translator"; To = "Translate to:"; OnlyCjk = "Only Chinese lines"; Orig = "Show original"
         Clear = "Clear"; Log = "Log file..."; Send = "To Chinese + copy"; Ui = "Magyar"
         Channels = @("Guild /g", "Say /s", "Party /p", "Raid /ra", "World /1", "Whisper /w", "(none)")
-        Langs = @("English", "Hungarian")
+        Langs = @("English", "Hungarian", "Chinese")
+        OnlyEn = "Only non-Chinese lines"; SendEn = "To English + copy"
         Watching = "Watching: "; NoLog = "No log file. In the game type /chatlog (or use the Log file... button)"
         Last = "Last translation: "; Error = "Error: "; Failed = "   [translation failed]"
         Copied = "On the clipboard! In the game: Enter, Ctrl+V, Enter"; WhoWhisper = "Type the name to whisper to"
@@ -38,7 +40,8 @@ $Texts = @{
         Title = "WoW Chat Fordító"; To = "Fordítás:"; OnlyCjk = "Csak kínai sorok"; Orig = "Eredeti is"
         Clear = "Törlés"; Log = "Naplófájl..."; Send = "Kínaira + másol"; Ui = "English"
         Channels = @("Guild /g", "Say /s", "Party /p", "Raid /ra", "Világ /1", "Suttog /w", "(nincs)")
-        Langs = @("Angol", "Magyar")
+        Langs = @("Angol", "Magyar", "Kínai")
+        OnlyEn = "Csak nem kínai sorok"; SendEn = "Angolra + másol"
         Watching = "Figyelt fájl: "; NoLog = "Nincs naplófájl. A játékban: /chatlog (vagy: Naplófájl... gomb)"
         Last = "Utolsó fordítás: "; Error = "Hiba: "; Failed = "   [fordítás sikertelen]"
         Copied = "Vágólapon! A játékban: Enter, Ctrl+V, Enter"; WhoWhisper = "Írd be, kinek suttogsz"
@@ -139,7 +142,7 @@ $toLabel = New-Object Windows.Forms.Label
 $toLabel.AutoSize = $true; $toLabel.Padding = New-Object Windows.Forms.Padding(0, 4, 0, 0)
 
 $lang = New-Object Windows.Forms.ComboBox
-$lang.DropDownStyle = "DropDownList"; $lang.Width = 90
+$lang.DropDownStyle = "DropDownList"; $lang.Width = 95
 
 $only = New-Object Windows.Forms.CheckBox
 $only.AutoSize = $true; $only.Checked = [bool]$Config.OnlyChinese
@@ -204,18 +207,21 @@ $form.Controls.Add($status)
 
 # ---- texts on the controls (called again when the UI language changes)
 $script:Building = $false
+# Chinese mode: English (non-Chinese) lines are translated to Chinese and the
+# reply line translates to English
+function Is-ZhMode { return ([string]$Config.Lang -eq "zh-CN") }
 function Apply-Texts {
     $script:Building = $true
     $form.Text = T "Title"
     $toLabel.Text = T "To"
     $lang.Items.Clear(); [void]$lang.Items.AddRange((T "Langs"))
-    $lang.SelectedIndex = $(if ($Config.Lang -eq "hu") { 1 } else { 0 })
-    $only.Text = T "OnlyCjk"
+    $lang.SelectedIndex = $(if ($Config.Lang -eq "hu") { 1 } elseif ($Config.Lang -eq "zh-CN") { 2 } else { 0 })
+    if (Is-ZhMode) { $only.Text = T "OnlyEn" } else { $only.Text = T "OnlyCjk" }
     $orig.Text = T "Orig"
     $clear.Text = T "Clear"
     $pick.Text = T "Log"
     $uiBtn.Text = T "Ui"
-    $send.Text = T "Send"
+    if (Is-ZhMode) { $send.Text = T "SendEn" } else { $send.Text = T "Send" }
     $ci = $chan.SelectedIndex; if ($ci -lt 0) { $ci = 0 }
     $chan.Items.Clear(); [void]$chan.Items.AddRange((T "Channels"))
     $chan.SelectedIndex = $ci
@@ -224,7 +230,8 @@ function Apply-Texts {
 
 $lang.Add_SelectedIndexChanged({
     if ($script:Building) { return }
-    $Config.Lang = $(if ($lang.SelectedIndex -eq 1) { "hu" } else { "en" }); Save-Config
+    $Config.Lang = $(if ($lang.SelectedIndex -eq 1) { "hu" } elseif ($lang.SelectedIndex -eq 2) { "zh-CN" } else { "en" }); Save-Config
+    Apply-Texts
 })
 $uiBtn.Add_Click({
     $Config.UiLang = $(if ($Config.UiLang -eq "hu") { "en" } else { "hu" }); Save-Config
@@ -283,7 +290,8 @@ function Send-Reply {
             if (-not $name) { Set-Status (T "WhoWhisper"); return }
             $prefix = "/w " + $name + " "
         }
-        $tr = Invoke-Translate $text "zh-CN"
+        $replyTarget = $(if (Is-ZhMode) { "en" } else { "zh-CN" })
+        $tr = Invoke-Translate $text $replyTarget
         [Windows.Forms.Clipboard]::SetText($prefix + $tr)
         Add-Text ((T "You") + $text + "`n") ([Drawing.Color]::FromArgb(110, 180, 255))
         Add-Text ("    " + $prefix + $tr + "`n") ([Drawing.Color]::FromArgb(150, 200, 255)) 9
@@ -320,8 +328,10 @@ $timer.Add_Tick({
             $parts = Split-ChatLine $line
             $head = $parts[0]; $msg = $parts[1]
             $isCjk = $msg -match $CjkPattern
-            if ($Config.OnlyChinese -and -not $isCjk) { continue }
-            if (-not $isCjk) { Show-Line $head $msg ""; continue }
+            # the lines in the other language than the target get translated
+            $foreign = $(if (Is-ZhMode) { -not $isCjk } else { $isCjk })
+            if ($Config.OnlyChinese -and -not $foreign) { continue }
+            if (-not $foreign) { Show-Line $head $msg ""; continue }
             try {
                 $tr = Invoke-Translate $msg $Config.Lang
                 Show-Line $head $tr $msg

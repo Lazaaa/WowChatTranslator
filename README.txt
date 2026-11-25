@@ -32,7 +32,7 @@ Every new Chinese chat line appears translated:
   grey   = original text
 
 Top bar:
-  Translate to       - English or Hungarian
+  Translate to       - English, Hungarian or Chinese (see below)
   Only Chinese lines - otherwise all chat lines are listed
   Show original      - also show the original text under the translation
   Clear              - clear the window
@@ -61,3 +61,11 @@ Notes
   natural; short, simple sentences work best.
 - Window position, size and settings are saved in
   %APPDATA%\WowChatTranslator.json
+
+Chinese mode (English -> Chinese)
+---------------------------------
+Choose "Chinese" in "Translate to". Then it works the other way round:
+- English (any non-Chinese) chat lines are shown translated to Chinese
+  ("Only non-Chinese lines" hides the Chinese ones),
+- the reply line translates what you type to English ("To English + copy").
+Handy for a Chinese-speaking friend playing next to you.
